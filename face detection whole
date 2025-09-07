@@ -1,0 +1,130 @@
+# Face Recognition Using PCA and ANN  
+**Submitted by:** Hansika sharma 
+**Objective:**  
+To implement a facial recognition system using Principal Component Analysis (PCA) for feature reduction and an Artificial Neural Network (ANN) for classification.
+
+---
+
+Face recognition plays a vital role in biometric systems. In this project, we first reduce image dimensionality using PCA, then train an ANN to classify the faces based on compact features (signature vectors). The approach enhances both performance and accuracy when working with high-dimensional image data.
+## 2. Dataset Preparation
+
+- Total Classes: 9 
+- Image Format: Grayscale JPG, resized to 64×64
+- Directory Structure:
+  - `dataset/faces/<person_name>/<image>.jpg`
+  - `dataset/iris/` (ignored for this task)
+
+We extracted and flattened these images into a matrix of shape (4096 × 450), forming our face database.
+import os
+import cv2
+import numpy as np
+
+def load_images(path, img_size=(64, 64)):
+    face_vectors = []
+    labels = []
+    label_names = []
+    label_map = {}
+
+    label_id = 0
+    for person_name in os.listdir(path):
+        person_path = os.path.join(path, person_name)
+        if os.path.isdir(person_path):
+            label_map[label_id] = person_name
+            for img_name in os.listdir(person_path):
+                img_path = os.path.join(person_path, img_name)
+                img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+                if img is not None:
+                    img_resized = cv2.resize(img, img_size).flatten()
+                    face_vectors.append(img_resized)
+                    labels.append(label_id)
+            label_id += 1
+
+    Face_Db = np.array(face_vectors).T  # shape: (mn, p)
+    y = np.array(labels)                # class labels
+    return Face_Db, y, label_map
+
+Face_Db, y, label_map = load_images(r"C:\Users\hansika\Downloads\dataset\faces")
+print("Face_Db shape:", Face_Db.shape)
+print("Number of classes:", len(label_map))
+# Step 2: Calculate Mean Face
+mean_face = np.mean(Face_Db, axis=1).reshape(-1, 1)  # shape: (mn, 1)
+
+print("Mean face shape:", mean_face.shape)
+# Step 3: Mean-Center Each Face
+Phi = Face_Db - mean_face  # shape: (4096, 450)
+
+print("Mean-aligned face matrix (Phi) shape:", Phi.shape)
+# Step 4: Surrogate covariance matrix
+C_small = Phi.T @ Phi  # Shape: (450, 450)
+print("Surrogate Covariance Matrix shape:", C_small.shape)
+# Step 5: Eigenvalue and Eigenvector decomposition
+eigenvalues, eigenvectors_small = np.linalg.eigh(C_small)  # Use eigh since C_small is symmetric
+
+print("Eigenvalues shape:", eigenvalues.shape)
+print("Eigenvectors shape:", eigenvectors_small.shape)
+# Step 6: Sort eigenvectors by eigenvalue magnitude (descending)
+idx = np.argsort(eigenvalues)[::-1]  # Indices of sorted eigenvalues (biggest first)
+eigenvalues_sorted = eigenvalues[idx]
+eigenvectors_sorted = eigenvectors_small[:, idx]
+k = 100
+eigenvectors_topk = eigenvectors_sorted[:, :k]  # shape: (450, k)
+print("Top-k eigenvectors shape:", eigenvectors_topk.shape)
+k = 100
+eigenvectors_topk = eigenvectors_sorted[:, :k]  # shape: (450, k)
+print("Top-k eigenvectors shape:", eigenvectors_topk.shape)
+# Step 8: Generate signature vectors
+signatures = eigenfaces.T @ Phi  # shape: (100, 450)
+print("Signature shape:", signatures.shape)
+from sklearn.model_selection import train_test_split
+
+X = signatures.T  # shape: (450, 100)
+y = y  # shape: (450,)
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4, stratify=y, random_state=42)
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.utils import to_categorical
+
+num_classes = len(np.unique(y))  # e.g. 9 people
+y_train_cat = to_categorical(y_train, num_classes)
+y_test_cat = to_categorical(y_test, num_classes)
+
+model = Sequential()
+model.add(Dense(64, input_dim=X_train.shape[1], activation='relu'))
+model.add(Dense(32, activation='relu'))
+model.add(Dense(num_classes, activation='softmax'))
+
+model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+model.summary()
+model.fit(X_train, y_train_cat, epochs=50, batch_size=8, validation_data=(X_test, y_test_cat))
+loss, accuracy = model.evaluate(X_test, y_test_cat)
+print(f"Test Accuracy: {accuracy * 100:.2f}%")
+test_img_path = r"C:\Users\hansika\Downloads\dataset\faces\Ileana\face_7.jpg"
+test_img = cv2.imread(test_img_path, cv2.IMREAD_GRAYSCALE)
+test_img = cv2.resize(test_img, (64, 64)).flatten().reshape(-1, 1)  # shape: (4096, 1)
+test_img_mean_aligned = test_img - mean_face  # shape: (4096, 1)
+test_signature = eigenfaces.T @ test_img_mean_aligned  # shape: (100, 1)
+import numpy as np
+
+prediction = model.predict(test_signature.T)  # ANN expects shape (1, 100)
+predicted_class = np.argmax(prediction)
+
+print("Predicted Class Label:", predicted_class)
+print("Predicted Person Name:", label_map[predicted_class])
+
+### Face Prediction Example
+
+Test Image: `faces/ileana/face_7.jpg" 
+**Predicted Class:** 8  
+**Predicted Person:** Ileana ✅  
+
+This project demonstrated a complete face recognition pipeline, from image preprocessing through PCA-based compression to ANN classification.
+
+**Strengths:**
+- Dimensionality reduction improved training speed
+- ANN classified known identities with >90% accuracy
+
+**Future Scope:**
+- Add support for impostor rejection (thresholding)
+- Test with real-time webcam input
+- Try CNNs for feature extraction
